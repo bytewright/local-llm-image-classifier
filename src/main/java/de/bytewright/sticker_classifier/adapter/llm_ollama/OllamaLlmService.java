@@ -1,0 +1,271 @@
+package de.bytewright.sticker_classifier.adapter.llm_ollama;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import de.bytewright.sticker_classifier.domain.llm.*;
+import de.bytewright.sticker_classifier.domain.model.ClassificationResult;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.ollama.api.OllamaApi;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static de.bytewright.sticker_classifier.adapter.llm_ollama.OllamaContextConfig.DEFAULT_MULTIMODAL_MODEL;
+import static de.bytewright.sticker_classifier.adapter.llm_ollama.OllamaContextConfig.DEFAULT_TEXT_MODEL;
+
+@Slf4j
+@Service
+@Profile("!test")
+@RequiredArgsConstructor
+public class OllamaLlmService implements LlmConnector, InitializingBean {
+
+  private final ObjectMapper objectMapper = new ObjectMapper();
+  private final PromptDataGenerator promptDataGenerator;
+  private final ClassificationResponseParser classificationResponseParser;
+  private final PromptLog promptLog;
+  private final OllamaApi ollamaApi;
+
+  private static final int MIN_CONTEXT_SIZE = 8_192;
+  private static final int MAX_CONTEXT_SIZE = 65_536;
+  private static final double TOKEN_TO_CHAR_RATIO = 4.0;
+  private static final double API_OVERHEAD_MARGIN = 1.2; // 20% buffer
+
+  @Override
+  public Optional<PromptResult> processRequest(PromptRequest request) {
+    log.debug(
+        "Processing request of type {} for id {}",
+        request.promptType(),
+        request.requestParameter());
+    try {
+      String result;
+      if (request instanceof PromptRequestWithImage requestWithImage) {
+        String jsonResponse = requestWithImage(requestWithImage.imagePath(), request.prompt());
+        return Optional.ofNullable(jsonResponse)
+            .flatMap(classificationResponseParser::parseResponse)
+            .map(
+                value ->
+                    ClassificationPromptResult.builder()
+                        .promptRequestWithImage(requestWithImage)
+                        .classificationResult(value)
+                        .build());
+      } else {
+        String context = getContext(request);
+        result = call(request, context);
+      }
+      var promptResult =
+          new StringPromptResult(request.promptType(), request.requestParameter(), result);
+      log.info(
+          "Successfully processed request of type {} for id {}",
+          request.promptType(),
+          request.requestParameter());
+      return Optional.of(promptResult);
+    } catch (Exception e) {
+      log.error(
+          "Failed to process request of type {} for id {}",
+          request.promptType(),
+          request.requestParameter(),
+          e);
+    }
+    return Optional.empty();
+  }
+
+  private String getContext(PromptRequest request) throws JsonProcessingException {
+    return switch (request) {
+      case PromptRequestUnstructured unstructured -> {
+        Map<String, Object> dataMap = promptDataGenerator.toMap(unstructured.promptDataList());
+        yield objectMapper.writeValueAsString(dataMap);
+      }
+      case PromptRetry promptRetry -> getContext(promptRetry.delegate());
+      case PromptRequestWithImage requestWithImage ->
+          throw new IllegalArgumentException("Not a context request!");
+    };
+  }
+
+  /**
+   * Internal method to call the Ollama API with text-only input.
+   *
+   * @param prompt The user's prompt.
+   * @param context Additional context for the prompt.
+   * @return The content of the Ollama API response.
+   */
+  String call(PromptRequest prompt, String context) {
+    log.debug(
+        "Sending text-only prompt to model {}:\nPrompt: {}\nContext: {}",
+        DEFAULT_TEXT_MODEL,
+        prompt.prompt(),
+        context);
+    promptLog.logPrompt(prompt, context);
+
+    long estimatedTokens = estimateTokenCount(prompt.prompt(), context);
+    int clampedContextSize = Math.clamp(estimatedTokens, MIN_CONTEXT_SIZE, MAX_CONTEXT_SIZE);
+    log.info(
+        "Estimated tokens: {}, Clamped context size (numCtx): {}",
+        estimatedTokens,
+        clampedContextSize);
+
+    var requestBuilder =
+        OllamaApi.ChatRequest.builder(DEFAULT_TEXT_MODEL).stream(false)
+            .messages(
+                List.of(
+                    OllamaApi.Message.builder(OllamaApi.Message.Role.SYSTEM)
+                        .content(SystemPrompts.TEXT_ANALYZE.getPrompt())
+                        .build(),
+                    OllamaApi.Message.builder(OllamaApi.Message.Role.USER)
+                        .content(String.format("Context for next prompt: %s", context))
+                        .build(),
+                    OllamaApi.Message.builder(OllamaApi.Message.Role.USER)
+                        .content(prompt.prompt())
+                        .build()))
+            .options(
+                OllamaChatOptions.builder()
+                    .temperature(1.5)
+                    .topP(0.95)
+                    .numCtx(clampedContextSize)
+                    .build());
+    if (prompt.responseJsonFormat().isPresent()) {
+      try {
+        Object schema = objectMapper.readValue(prompt.responseJsonFormat().get(), Object.class);
+        requestBuilder = requestBuilder.format(schema);
+      } catch (JsonProcessingException e) {
+        throw new RuntimeException(e);
+      }
+    }
+    try {
+      OllamaApi.ChatResponse response = ollamaApi.chat(requestBuilder.build());
+      if (response != null && response.message() != null) {
+        OllamaApi.Message message = response.message();
+        String content = message.content();
+        promptLog.logResponse(prompt, content);
+        return content;
+      } else {
+        log.error("Received null response or message from Ollama API for text request.");
+        return "Error: No response from LLM.";
+      }
+    } catch (Exception e) {
+      log.error("Error calling Ollama API for text request: {}", e.getMessage(), e);
+      return "Error: Could not connect to LLM or process request.";
+    }
+  }
+
+  /**
+   * Estimates the number of tokens based on the character length of the input strings.
+   *
+   * @param prompt The user's prompt.
+   * @param context The context for the prompt.
+   * @return An estimated token count with a buffer for API overhead.
+   */
+  private long estimateTokenCount(String prompt, String context) {
+    long totalChars = prompt.length() + context.length();
+    double estimatedTokens = totalChars / TOKEN_TO_CHAR_RATIO;
+    return Math.round(estimatedTokens * API_OVERHEAD_MARGIN);
+  }
+
+  private String callWithImage(String prompt, String base64Image) {
+    log.debug(
+        "Sending multimodal prompt to model {}:\nPrompt: {}", DEFAULT_MULTIMODAL_MODEL, prompt);
+
+    var userMessage =
+        OllamaApi.Message.builder(OllamaApi.Message.Role.USER)
+            .content(prompt)
+            .images(List.of(base64Image))
+            .build();
+
+    // Define JSON schema for structured response
+    var responseSchema =
+        Map.of(
+            "type",
+            "object",
+            "properties",
+            Map.of(
+                "categoryScores",
+                Map.of("type", "object", "additionalProperties", Map.of("type", "number")),
+                "suggestedCategory",
+                Map.of("type", "string"),
+                "emoji",
+                Map.of("type", "string"),
+                "keyword",
+                Map.of("type", "string")),
+            "required",
+            List.of("categoryScores", "suggestedCategory", "emoji", "keyword"));
+
+    var request =
+        OllamaApi.ChatRequest.builder(DEFAULT_MULTIMODAL_MODEL).stream(false)
+            .messages(
+                List.of(
+                    OllamaApi.Message.builder(OllamaApi.Message.Role.SYSTEM)
+                        .content(SystemPrompts.IMAGE_CLASSIFY_ANALYZE.getPrompt())
+                        .build(),
+                    userMessage))
+            .options(OllamaChatOptions.builder().temperature(0.3).topP(0.9).numCtx(8_192).build())
+            .format(responseSchema) // Enforce JSON structure
+            .build();
+
+    try {
+      OllamaApi.ChatResponse response = ollamaApi.chat(request);
+      if (response != null && response.message() != null) {
+        return response.message().content();
+      } else {
+        log.error("Received null response or message from Ollama API for multimodal request.");
+        return null;
+      }
+    } catch (Exception e) {
+      log.error("Error calling Ollama API for multimodal request: {}", e.getMessage(), e);
+      return null;
+    }
+  }
+
+  public String requestWithImage(Path imagePath, String userPrompt) {
+    log.info(
+        "Attempting to get character info from image: {}",
+        imagePath != null ? imagePath.toAbsolutePath() : "null");
+    if (imagePath == null) {
+      log.error("Image file is null.");
+      return "Error: Image file cannot be null.";
+    }
+    try {
+      String base64Image = encodeImageToBase64(imagePath);
+      return callWithImage(userPrompt, base64Image);
+    } catch (IOException e) {
+      log.error("Failed to encode image to Base64: {}", e.getMessage(), e);
+      return "Error: Could not process image file. " + e.getMessage();
+    } catch (Exception e) {
+      log.error(
+          "An unexpected error occurred while getting character info from image: {}",
+          e.getMessage(),
+          e);
+      return "Error: An unexpected error occurred. " + e.getMessage();
+    }
+  }
+
+  /**
+   * Helper method to encode an image file to a Base64 string.
+   *
+   * @param imagePath The image file to encode.
+   * @return A Base64 encoded string representation of the image.
+   * @throws IOException If an error occurs during file reading.
+   */
+  private String encodeImageToBase64(Path imagePath) throws IOException {
+    if (imagePath == null || !Files.exists(imagePath) || !Files.isRegularFile(imagePath)) {
+      throw new IOException(
+          "Image file is invalid or does not exist: "
+              + (imagePath != null ? imagePath.toAbsolutePath() : "null"));
+    }
+    byte[] fileContent = Files.readAllBytes(imagePath);
+    return Base64.getEncoder().encodeToString(fileContent);
+  }
+
+  @Override
+  public void afterPropertiesSet() throws Exception {
+    objectMapper.findAndRegisterModules();
+  }
+}
