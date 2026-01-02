@@ -6,13 +6,16 @@ import de.bytewright.sticker_classifier.adapter.workpackage_parser.model.Sticker
 import de.bytewright.sticker_classifier.domain.event.ConfigurationLoadedEvent;
 import de.bytewright.sticker_classifier.domain.input.ConfigParser;
 import de.bytewright.sticker_classifier.domain.model.ClassificationCategory;
+import de.bytewright.sticker_classifier.domain.model.CompoundClassificationCategory;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -52,10 +55,19 @@ public class ConfigurationReader implements ConfigParser {
       Path outDir = Paths.get(config.getOutputDirectory());
       List<ClassificationCategory> categories =
           config.getClassifications().stream()
-              .map(c -> new ClassificationCategory(c.getName(), c.getDescription()))
+              .filter(classification -> classification.getCompoundCategory().isEmpty())
+              .map(
+                  c -> new ClassificationCategory(c.getName(), c.getPriority(), c.getDescription()))
               .toList();
 
-      ConfigurationLoadedEvent event = new ConfigurationLoadedEvent(workDir, outDir, categories);
+      List<CompoundClassificationCategory> compoundClassificationCategoryList =
+          config.getClassifications().stream()
+              .filter(classification -> !classification.getCompoundCategory().isEmpty())
+              .map(classification -> createCompound(categories, classification))
+              .toList();
+      ConfigurationLoadedEvent event =
+          new ConfigurationLoadedEvent(
+              workDir, outDir, categories, compoundClassificationCategoryList);
       log.info(
           "Configuration loaded successfully. Work directory: {}, Classifications: {}",
           workDir,
@@ -68,6 +80,23 @@ public class ConfigurationReader implements ConfigParser {
       log.error("Invalid configuration: {}", e.getMessage());
       throw new ConfigurationLoadException("Invalid configuration: " + e.getMessage(), e);
     }
+  }
+
+  private CompoundClassificationCategory createCompound(
+      List<ClassificationCategory> categories,
+      StickerClassificationConfig.Classification classification) {
+    Set<ClassificationCategory> categorySet = new HashSet<>();
+    for (String name : classification.getCompoundCategory()) {
+      ClassificationCategory foundCategory =
+          categories.stream()
+              .filter(classificationCategory -> classificationCategory.name().equals(name))
+              .findAny()
+              .orElseThrow();
+      categorySet.add(foundCategory);
+    }
+
+    return new CompoundClassificationCategory(
+        classification.getName(), categorySet, classification.getDescription());
   }
 
   private StickerClassificationConfig loadYamlConfiguration(Path configPath) throws IOException {

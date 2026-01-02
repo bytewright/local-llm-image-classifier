@@ -3,6 +3,7 @@ package de.bytewright.sticker_classifier.adapter.storageInMemory;
 import de.bytewright.sticker_classifier.domain.llm.PromptRequest;
 import de.bytewright.sticker_classifier.domain.model.ClassificationCategory;
 import de.bytewright.sticker_classifier.domain.model.ClassificationResult;
+import de.bytewright.sticker_classifier.domain.model.CompoundClassificationCategory;
 import de.bytewright.sticker_classifier.domain.session.ProcessingState;
 import de.bytewright.sticker_classifier.domain.storage.SessionStorage;
 import java.nio.file.Path;
@@ -22,9 +23,13 @@ public class InMemoryStorage implements SessionStorage {
 
   @Override
   public UUID createSession(
-      List<ClassificationCategory> classifications, Path workDirectory, Path outputDirectory) {
+      List<ClassificationCategory> classifications,
+      List<CompoundClassificationCategory> compoundCategories,
+      Path workDirectory,
+      Path outputDirectory) {
     ClassificationSession session =
-        new ClassificationSession(classifications, workDirectory, outputDirectory);
+        new ClassificationSession(
+            classifications, compoundCategories, workDirectory, outputDirectory);
     UUID sessionId = UUID.randomUUID();
     storage.put(sessionId, session);
     return sessionId;
@@ -48,6 +53,11 @@ public class InMemoryStorage implements SessionStorage {
   @Override
   public List<ClassificationCategory> getClassificationCategories(UUID sessionId) {
     return getOrThrow(sessionId).getClassifications();
+  }
+
+  @Override
+  public List<CompoundClassificationCategory> getCompoundCategories(UUID sessionId) {
+    return getOrThrow(sessionId).getCompoundCategories();
   }
 
   @Override

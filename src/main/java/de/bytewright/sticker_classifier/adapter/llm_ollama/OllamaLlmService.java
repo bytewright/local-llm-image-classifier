@@ -57,7 +57,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
       if (request instanceof PromptRequestWithImage requestWithImage) {
         String jsonResponse = requestWithImage(requestWithImage);
         return Optional.ofNullable(jsonResponse)
-            .flatMap(classificationResponseParser::parseResponse)
+            .flatMap(json -> classificationResponseParser.parseResponse(requestWithImage, json))
             .map(
                 value ->
                     ClassificationPromptResult.builder()

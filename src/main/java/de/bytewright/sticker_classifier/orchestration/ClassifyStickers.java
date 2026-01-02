@@ -6,8 +6,6 @@ import de.bytewright.sticker_classifier.domain.model.ClassificationCategory;
 import de.bytewright.sticker_classifier.domain.session.ProcessingState;
 import de.bytewright.sticker_classifier.domain.storage.SessionStorage;
 import de.bytewright.sticker_classifier.orchestration.llm.PromptRequestCoordinator;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +30,10 @@ public class ClassifyStickers {
     log.info("Classifications: {}", event.classifications().size());
     UUID sessionId =
         sessionStorage.createSession(
-            event.classifications(), event.workDirectory(), event.outputDirectory());
+            event.classifications(),
+            event.compoundCategories(),
+            event.workDirectory(),
+            event.outputDirectory());
     this.currentConfig = event;
     startProcessing(sessionId);
   }
@@ -43,25 +44,12 @@ public class ClassifyStickers {
     try {
       // Phase 1: Discovery and Deduplication
       Collection<FileMetadata> fileMetadata = fileDiscovery.discoverUniqueFiles(sessionId);
-      // Phase 2: result preparation
-      prepareResultDirectories(sessionId);
       // Phase 3: Classification
       sessionStorage.updateState(sessionId, ProcessingState.CLASSIFYING);
       classifyFiles(sessionId, fileMetadata);
     } catch (Exception e) {
       log.error("Error during processing", e);
       sessionStorage.updateState(sessionId, ProcessingState.FAILED);
-    }
-  }
-
-  private void prepareResultDirectories(UUID sessionId) throws IOException {
-    Path resultRootDir = sessionStorage.getResultRootDir(sessionId);
-    Files.createDirectories(resultRootDir);
-    for (ClassificationCategory classificationCategory :
-        sessionStorage.getClassificationCategories(sessionId)) {
-      String categoryName = classificationCategory.name();
-      Path path = currentConfig.outputDirectory().resolve(categoryName);
-      Files.createDirectories(path);
     }
   }
 
@@ -84,10 +72,11 @@ public class ClassifyStickers {
 
   private String buildClassificationPrompt() {
     StringBuilder prompt = new StringBuilder();
-    prompt.append("Classify this sticker image into one of the following categories:\n\n");
+    prompt.append(
+        "Analyze this chat sticker image and determine a set of 'Tags' for it from the following list:\n\n");
 
     for (ClassificationCategory category : currentConfig.classifications()) {
-      prompt.append("Category: ").append(category.name()).append("\n");
+      prompt.append("Tag: ").append(category.name()).append("\n");
       prompt.append("Description: ").append(category.description()).append("\n\n");
     }
     return prompt.toString();

@@ -12,9 +12,9 @@ public enum SystemPrompts {
    Your task is to analyze sticker images and classify them based on their visual characteristics and emotional content.
    The user will provide:
    - An image to analyze
-   - A list of possible categories with visual descriptions
+   - A list of possible tags with visual descriptions to assign to given image
    You must respond with a JSON object containing:
-   1. categoryName: The category name that best matches the sticker's visual characteristics
+   1. detectedTags: A list of all tags that best match the sticker's visual characteristics
    2. hasText: Boolean indicating if any text is visible in the sticker (true/false)
    3. textLanguageGuess: If text is present, your best guess of the language as iso language code. If no text, use null or empty string.
    4. emoji: A single emoji representing the EMOTION or ACTION depicted
@@ -22,9 +22,8 @@ public enum SystemPrompts {
    Classification approach:
    - Carefully examine the visual characteristics described in each category
    - Match character appearance (colors, features, body type) against category descriptions
-   - Identify the PRIMARY character or subject matter
-   - If multiple characters match different categories, choose the most prominent one
-   - Use the "others" category only when no other category matches well
+   - Identify the PRIMARY characters or subject matter
+   - Use the "other" category only when no other category matches well
    Emoji selection (IMPORTANT):
    - Focus on the EMOTION, MOOD, or ACTION shown in the sticker
    - Ignore what species/type the character is (rabbit, bear, etc.)
@@ -44,7 +43,7 @@ public enum SystemPrompts {
    - If text is present but language is unclear, use "Unknown"
    Response format (strict JSON):
    {
-     "categoryName": "category_name",
+     "detectedTags": ["tag_name1", "tag_name2"],
      "hasText": true,
      "textLanguageGuess": "Korean",
      "emoji": "😊",

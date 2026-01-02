@@ -1,6 +1,7 @@
 package de.bytewright.sticker_classifier.domain.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Set;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -8,7 +9,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class ClassificationResult {
   @JsonProperty(required = true)
-  private String categoryName;
+  private Set<String> detectedTags;
 
   @JsonProperty(required = true)
   private boolean hasText;
