@@ -1,17 +1,20 @@
 package de.bytewright.sticker_classifier.adapter.llm_ollama;
 
+import static com.github.victools.jsonschema.generator.Option.EXTRA_OPEN_API_FORMAT_VALUES;
+import static com.github.victools.jsonschema.generator.OptionPreset.PLAIN_JSON;
+import static com.github.victools.jsonschema.generator.SchemaVersion.DRAFT_2020_12;
+import static com.github.victools.jsonschema.module.jackson.JacksonOption.RESPECT_JSONPROPERTY_REQUIRED;
+import static de.bytewright.sticker_classifier.adapter.llm_ollama.OllamaContextConfig.DEFAULT_MULTIMODAL_MODEL;
+import static de.bytewright.sticker_classifier.adapter.llm_ollama.OllamaContextConfig.DEFAULT_TEXT_MODEL;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.victools.jsonschema.generator.SchemaGenerator;
+import com.github.victools.jsonschema.generator.SchemaGeneratorConfigBuilder;
+import com.github.victools.jsonschema.module.jackson.JacksonModule;
 import de.bytewright.sticker_classifier.domain.llm.*;
 import de.bytewright.sticker_classifier.domain.model.ClassificationResult;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.ollama.api.OllamaApi;
-import org.springframework.ai.ollama.api.OllamaChatOptions;
-import org.springframework.beans.factory.InitializingBean;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Service;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,9 +22,13 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-import static de.bytewright.sticker_classifier.adapter.llm_ollama.OllamaContextConfig.DEFAULT_MULTIMODAL_MODEL;
-import static de.bytewright.sticker_classifier.adapter.llm_ollama.OllamaContextConfig.DEFAULT_TEXT_MODEL;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.ollama.api.OllamaApi;
+import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
@@ -49,7 +56,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     try {
       String result;
       if (request instanceof PromptRequestWithImage requestWithImage) {
-        String jsonResponse = requestWithImage(requestWithImage.imagePath(), request.prompt());
+        String jsonResponse = requestWithImage(requestWithImage);
         return Optional.ofNullable(jsonResponse)
             .flatMap(classificationResponseParser::parseResponse)
             .map(
@@ -63,7 +70,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
         result = call(request, context);
       }
       var promptResult =
-          new StringPromptResult(request.promptType(), request.requestParameter(), result);
+          new StringPromptResult(request, request.promptType(), request.requestParameter(), result);
       log.info(
           "Successfully processed request of type {} for id {}",
           request.promptType(),
@@ -86,8 +93,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
         yield objectMapper.writeValueAsString(dataMap);
       }
       case PromptRetry promptRetry -> getContext(promptRetry.delegate());
-      case PromptRequestWithImage requestWithImage ->
-          throw new IllegalArgumentException("Not a context request!");
+      case PromptRequestWithImage requestWithImage -> null;
     };
   }
 
@@ -170,33 +176,19 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     return Math.round(estimatedTokens * API_OVERHEAD_MARGIN);
   }
 
-  private String callWithImage(String prompt, String base64Image) {
+  private String callWithImage(PromptRequestWithImage prompt, String base64Image) {
     log.debug(
         "Sending multimodal prompt to model {}:\nPrompt: {}", DEFAULT_MULTIMODAL_MODEL, prompt);
 
+    promptLog.logPrompt(prompt, null);
     var userMessage =
         OllamaApi.Message.builder(OllamaApi.Message.Role.USER)
-            .content(prompt)
+            .content(prompt.prompt())
             .images(List.of(base64Image))
             .build();
 
     // Define JSON schema for structured response
-    var responseSchema =
-        Map.of(
-            "type",
-            "object",
-            "properties",
-            Map.of(
-                "categoryScores",
-                Map.of("type", "object", "additionalProperties", Map.of("type", "number")),
-                "suggestedCategory",
-                Map.of("type", "string"),
-                "emoji",
-                Map.of("type", "string"),
-                "keyword",
-                Map.of("type", "string")),
-            "required",
-            List.of("categoryScores", "suggestedCategory", "emoji", "keyword"));
+    var responseSchema = getSchema(ClassificationResult.class);
 
     var request =
         OllamaApi.ChatRequest.builder(DEFAULT_MULTIMODAL_MODEL).stream(false)
@@ -224,7 +216,20 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     }
   }
 
-  public String requestWithImage(Path imagePath, String userPrompt) {
+  Object getSchema(Class<ClassificationResult> aClass) {
+    JacksonModule module = new JacksonModule(RESPECT_JSONPROPERTY_REQUIRED);
+    SchemaGeneratorConfigBuilder configBuilder =
+        new SchemaGeneratorConfigBuilder(DRAFT_2020_12, PLAIN_JSON)
+            .with(module)
+            .with(EXTRA_OPEN_API_FORMAT_VALUES);
+
+    SchemaGenerator generator = new SchemaGenerator(configBuilder.build());
+    JsonNode jsonSchema = generator.generateSchema(aClass);
+    return jsonSchema;
+  }
+
+  private String requestWithImage(PromptRequestWithImage requestWithImage) {
+    Path imagePath = requestWithImage.imagePath();
     log.info(
         "Attempting to get character info from image: {}",
         imagePath != null ? imagePath.toAbsolutePath() : "null");
@@ -234,7 +239,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     }
     try {
       String base64Image = encodeImageToBase64(imagePath);
-      return callWithImage(userPrompt, base64Image);
+      return callWithImage(requestWithImage, base64Image);
     } catch (IOException e) {
       log.error("Failed to encode image to Base64: {}", e.getMessage(), e);
       return "Error: Could not process image file. " + e.getMessage();

@@ -1,10 +1,9 @@
 package de.bytewright.sticker_classifier.domain.llm;
 
-import lombok.Builder;
-
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.Builder;
 
 /**
  * Generates character meta-information (e.g., gender, age) from an image.
@@ -19,6 +18,6 @@ public record PromptRequestWithImage(
     implements PromptRequest {
   @Override
   public Optional<String> responseJsonFormat() {
-    return Optional.of(jsonFormat);
+    return Optional.ofNullable(jsonFormat);
   }
 }
