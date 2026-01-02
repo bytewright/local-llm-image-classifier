@@ -1,11 +1,10 @@
 package de.bytewright.sticker_classifier.orchestration.llm;
 
-import java.util.Optional;
-
 import de.bytewright.sticker_classifier.domain.llm.LlmConnector;
 import de.bytewright.sticker_classifier.domain.llm.PromptRequest;
 import de.bytewright.sticker_classifier.domain.llm.PromptResult;
 import de.bytewright.sticker_classifier.domain.llm.PromptResultProcessor;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

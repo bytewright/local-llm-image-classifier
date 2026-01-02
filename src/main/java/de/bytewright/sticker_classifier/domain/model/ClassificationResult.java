@@ -14,6 +14,6 @@ public class ClassificationResult {
   private boolean hasText;
 
   private String textLanguageGuess;
-    private String emoji;
-    private String keyword;
+  private String emoji;
+  private String keyword;
 }

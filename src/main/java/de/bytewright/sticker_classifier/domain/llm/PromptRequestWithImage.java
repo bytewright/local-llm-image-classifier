@@ -14,7 +14,7 @@ import lombok.Builder;
  */
 @Builder
 public record PromptRequestWithImage(
-        Path imagePath, String prompt, PromptType promptType, UUID requestParameter, String jsonFormat)
+    Path imagePath, String prompt, PromptType promptType, UUID requestParameter, String jsonFormat)
     implements PromptRequest {
   @Override
   public Optional<String> responseJsonFormat() {

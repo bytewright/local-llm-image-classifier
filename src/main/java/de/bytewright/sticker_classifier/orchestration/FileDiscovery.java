@@ -1,10 +1,6 @@
 package de.bytewright.sticker_classifier.orchestration;
 
 import de.bytewright.sticker_classifier.domain.storage.SessionStorage;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +12,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
@@ -23,7 +22,8 @@ import java.util.stream.Stream;
 public class FileDiscovery {
   private final SessionStorage sessionStorage;
 
-  public Collection<ClassifyStickers.FileMetadata> discoverUniqueFiles(UUID sessionId) throws IOException {
+  public Collection<ClassifyStickers.FileMetadata> discoverUniqueFiles(UUID sessionId)
+      throws IOException {
     Path workDir = sessionStorage.getWorkDir(sessionId);
     log.info("Phase 1: Discovering files in {}", workDir);
 

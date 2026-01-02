@@ -12,10 +12,10 @@ import lombok.Data;
 
 @Data
 public class ClassificationSession {
- private final List<ClassificationCategory> classifications;
+  private final List<ClassificationCategory> classifications;
   private final Collection<ClassificationResult> results = new ArrayList<>();
- private final Path workDirectory;
- private final Path outputDirectory;
- private ProcessingState processingState;
+  private final Path workDirectory;
+  private final Path outputDirectory;
   private final Collection<PromptRequest> requests = new ArrayList<>();
+  private ProcessingState processingState;
 }

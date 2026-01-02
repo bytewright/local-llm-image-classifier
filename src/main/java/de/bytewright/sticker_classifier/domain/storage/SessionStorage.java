@@ -9,17 +9,18 @@ import java.util.List;
 import java.util.UUID;
 
 public interface SessionStorage {
-    UUID createSession(List<ClassificationCategory> classifications, Path workDirectory, Path outputDirectory);
+  UUID createSession(
+      List<ClassificationCategory> classifications, Path workDirectory, Path outputDirectory);
 
-    void updateState(UUID sessionId, ProcessingState processingState);
+  void updateState(UUID sessionId, ProcessingState processingState);
 
-    Path getWorkDir(UUID sessionId);
+  Path getWorkDir(UUID sessionId);
 
-    Path getResultRootDir(UUID sessionId);
+  Path getResultRootDir(UUID sessionId);
 
-    List<ClassificationCategory> getClassificationCategories(UUID sessionId);
+  List<ClassificationCategory> getClassificationCategories(UUID sessionId);
 
-    void storeResult(UUID sessionId, ClassificationResult result);
+  void storeResult(UUID sessionId, ClassificationResult result);
 
   void addRequest(UUID sessionId, PromptRequest request);
 }

@@ -1,5 +1,6 @@
 package de.bytewright.sticker_classifier.adapter.llm_ollama;
 
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.ollama.api.OllamaApi;
@@ -8,8 +9,6 @@ import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Slf4j
 @Service
@@ -37,7 +36,8 @@ public class OllamaModelWarmer {
                       OllamaApi.Message.builder(OllamaApi.Message.Role.USER)
                           .content("Hello! Are you ready?")
                           .build()))
-              .options(OllamaChatOptions.builder().numPredict(-1).build()) // -1 to generate until EOS
+              .options(
+                  OllamaChatOptions.builder().numPredict(-1).build()) // -1 to generate until EOS
               .build();
       OllamaApi.ChatResponse response = ollamaApi.chat(warmupRequest);
       if (response != null && response.message() != null && response.message().content() != null) {

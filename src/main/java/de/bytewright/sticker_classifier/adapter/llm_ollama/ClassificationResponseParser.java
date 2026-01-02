@@ -71,7 +71,9 @@ public class ClassificationResponseParser {
       result.setHasText(false);
     }
 
-    if (result.isHasText() && "unknown".equals(result.getTextLanguageGuess())) {
+    if (result.isHasText()
+        && StringUtils.hasText(result.getTextLanguageGuess())
+        && result.getTextLanguageGuess().toLowerCase().contains("unknown")) {
       result.setHasText(false);
     }
     return true;

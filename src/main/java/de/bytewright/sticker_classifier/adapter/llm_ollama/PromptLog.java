@@ -1,10 +1,6 @@
 package de.bytewright.sticker_classifier.adapter.llm_ollama;
 
 import de.bytewright.sticker_classifier.domain.llm.PromptRequest;
-import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +10,9 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
@@ -95,16 +94,16 @@ public class PromptLog {
       Path logFile = getOrCreateLogFile(prompt);
       String timestamp = LocalDateTime.now().format(DETAILED_TIMESTAMP_FORMATTER);
 
-      StringBuilder logEntry = new StringBuilder();
-      logEntry.append(RESPONSE_SEPARATOR).append("\n");
-      logEntry.append("Response Timestamp: ").append(timestamp).append("\n");
-      logEntry.append("Content: ").append(content).append("\n");
-      logEntry.append("\n").append("=".repeat(80)).append("\n\n");
+        String logEntry = RESPONSE_SEPARATOR + "\n" +
+                          "Response Timestamp: " + timestamp + "\n" +
+                          "Content: " + content + "\n" +
+                          "\n" + "=".repeat(80) + "\n\n";
 
       Files.writeString(
-          logFile, logEntry.toString(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+          logFile, logEntry, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 
-      log.debug("Logged response for {} with ID {}", prompt.promptType(), prompt.requestParameter());
+      log.debug(
+          "Logged response for {} with ID {}", prompt.promptType(), prompt.requestParameter());
 
     } catch (IOException e) {
       log.error(

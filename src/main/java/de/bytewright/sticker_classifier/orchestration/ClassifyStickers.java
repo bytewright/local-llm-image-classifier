@@ -59,7 +59,7 @@ public class ClassifyStickers {
     Files.createDirectories(resultRootDir);
     for (ClassificationCategory classificationCategory :
         sessionStorage.getClassificationCategories(sessionId)) {
-      String categoryName = classificationCategory.getName();
+      String categoryName = classificationCategory.name();
       Path path = currentConfig.outputDirectory().resolve(categoryName);
       Files.createDirectories(path);
     }
@@ -87,8 +87,8 @@ public class ClassifyStickers {
     prompt.append("Classify this sticker image into one of the following categories:\n\n");
 
     for (ClassificationCategory category : currentConfig.classifications()) {
-      prompt.append("Category: ").append(category.getName()).append("\n");
-      prompt.append("Description: ").append(category.getDescription()).append("\n\n");
+      prompt.append("Category: ").append(category.name()).append("\n");
+      prompt.append("Description: ").append(category.description()).append("\n\n");
     }
     return prompt.toString();
   }

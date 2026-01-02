@@ -1,11 +1,10 @@
 package de.bytewright.sticker_classifier.domain.llm;
 
-import lombok.Builder;
-import lombok.Singular;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.Builder;
+import lombok.Singular;
 
 /**
  * Processes a request immediately and returns the result This is a synchronous call, so it will

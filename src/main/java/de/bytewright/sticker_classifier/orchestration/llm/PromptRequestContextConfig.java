@@ -1,8 +1,7 @@
 package de.bytewright.sticker_classifier.orchestration.llm;
 
-import java.util.Set;
-
 import de.bytewright.sticker_classifier.domain.llm.PromptResultConsumer;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;

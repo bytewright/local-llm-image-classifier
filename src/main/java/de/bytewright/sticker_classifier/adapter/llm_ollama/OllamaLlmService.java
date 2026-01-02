@@ -36,16 +36,15 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class OllamaLlmService implements LlmConnector, InitializingBean {
 
+  private static final int MIN_CONTEXT_SIZE = 8_192;
+  private static final int MAX_CONTEXT_SIZE = 65_536;
+  private static final double TOKEN_TO_CHAR_RATIO = 4.0;
+  private static final double API_OVERHEAD_MARGIN = 1.2; // 20% buffer
   private final ObjectMapper objectMapper = new ObjectMapper();
   private final PromptDataGenerator promptDataGenerator;
   private final ClassificationResponseParser classificationResponseParser;
   private final PromptLog promptLog;
   private final OllamaApi ollamaApi;
-
-  private static final int MIN_CONTEXT_SIZE = 8_192;
-  private static final int MAX_CONTEXT_SIZE = 65_536;
-  private static final double TOKEN_TO_CHAR_RATIO = 4.0;
-  private static final double API_OVERHEAD_MARGIN = 1.2; // 20% buffer
 
   @Override
   public Optional<PromptResult> processRequest(PromptRequest request) {

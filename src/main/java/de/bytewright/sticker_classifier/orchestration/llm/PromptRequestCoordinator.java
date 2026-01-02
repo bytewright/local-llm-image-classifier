@@ -1,11 +1,10 @@
 package de.bytewright.sticker_classifier.orchestration.llm;
 
+import de.bytewright.sticker_classifier.domain.llm.PromptRequest;
+import de.bytewright.sticker_classifier.domain.llm.PromptRetry;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
-
-import de.bytewright.sticker_classifier.domain.llm.PromptRequest;
-import de.bytewright.sticker_classifier.domain.llm.PromptRetry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -16,9 +15,7 @@ public class PromptRequestCoordinator /*implements HealthIndicator*/ {
   private final Queue<PromptRequest> requestQueue = new ConcurrentLinkedQueue<>();
 
   public void schedule(PromptRequest request) {
-    log.debug(
-        "Queueing new request of type {}",
-        request.promptType());
+    log.debug("Queueing new request of type {}", request.promptType());
     requestQueue.add(request);
   }
 
