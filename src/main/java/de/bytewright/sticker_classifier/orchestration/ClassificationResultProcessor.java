@@ -29,6 +29,7 @@ public class ClassificationResultProcessor implements PromptResultConsumer {
       case ClassificationPromptResult classificationPromptResult ->
           processClassificationResult(classificationPromptResult);
       case StringPromptResult stringPromptResult -> false;
+      case ErrorPromptResult errorPromptResult -> false;
     };
   }
 

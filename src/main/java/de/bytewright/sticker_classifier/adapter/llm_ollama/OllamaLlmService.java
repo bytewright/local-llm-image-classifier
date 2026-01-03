@@ -58,8 +58,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     try {
       String result;
       if (request instanceof PromptRequestWithImage requestWithImage) {
-        String jsonResponse = requestWithImage(requestWithImage);
-        return Optional.ofNullable(jsonResponse)
+        return requestWithImage(requestWithImage)
             .flatMap(json -> classificationResponseParser.parseResponse(requestWithImage, json))
             .map(
                 value ->
@@ -78,6 +77,8 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
           request.promptType(),
           request.requestParameter());
       return Optional.of(promptResult);
+    } catch (NoRetryException e) {
+      return Optional.of(new ErrorPromptResult(request));
     } catch (Exception e) {
       log.error(
           "Failed to process request of type {} for id {}",
@@ -239,7 +240,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     } catch (TransientAiException e) {
       log.error("Error from ollama api: {}", e.getMessage());
       eventPublisher.publishEvent(new ImagePromptRequestFailedEvent(imagePath));
-      return null;
+      throw new NoRetryException();
     } catch (Exception e) {
       log.error("Error calling Ollama API for multimodal request: {}", e.getMessage(), e);
       return null;
@@ -260,28 +261,29 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     return schemaDef;
   }
 
-  private String requestWithImage(PromptRequestWithImage requestWithImage) {
+  private Optional<String> requestWithImage(PromptRequestWithImage requestWithImage) {
     Path imagePath = requestWithImage.imagePath();
     log.info(
         "Attempting to get character info from image: {}",
         imagePath != null ? imagePath.toAbsolutePath() : "null");
     if (imagePath == null) {
       log.error("Image file is null.");
-      return "Error: Image file cannot be null.";
+      return Optional.empty();
     }
     try {
       String base64Image = encodeImageToBase64(imagePath);
-      return callWithImage(requestWithImage, imagePath, base64Image);
+      return Optional.ofNullable(callWithImage(requestWithImage, imagePath, base64Image));
     } catch (IOException e) {
       log.error("Failed to encode image to Base64: {}", e.getMessage(), e);
-      return "Error: Could not process image file. " + e.getMessage();
+    } catch (NoRetryException e) {
+      throw e;
     } catch (Exception e) {
       log.error(
           "An unexpected error occurred while getting character info from image: {}",
           e.getMessage(),
           e);
-      return "Error: An unexpected error occurred. " + e.getMessage();
     }
+    return Optional.empty();
   }
 
   /**
