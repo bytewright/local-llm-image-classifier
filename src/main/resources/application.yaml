@@ -5,6 +5,10 @@ app:
   orchestration:
     classification:
       removeOriginalFile: true
+      removeDuplicates: true
+    prompts:
+      workerCount: 4
+      threadCount: 4
   adapter:
     ollama:
       multiModalModel: "qwen3-vl:4b"

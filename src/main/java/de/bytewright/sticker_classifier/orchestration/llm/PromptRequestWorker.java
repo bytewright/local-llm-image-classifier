@@ -11,12 +11,13 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @RequiredArgsConstructor
 public class PromptRequestWorker {
+  private final String workerName;
   private final LlmConnector llmConnector;
   private final PromptRequestCoordinator coordinator;
   private final PromptResultProcessor resultConsumer;
 
   void processingLoop() {
-    log.info("Storyteller worker thread started");
+    log.info("Worker thread started with name: {}", workerName);
     try {
       while (!Thread.currentThread().isInterrupted()) {
         try {
@@ -37,14 +38,14 @@ public class PromptRequestWorker {
           }
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
-          log.warn("Storyteller worker interrupted, shutting down");
+          log.warn("Worker interrupted, shutting down");
           break;
         } catch (Exception e) {
           log.error("Error processing request", e);
         }
       }
     } finally {
-      log.info("Storyteller worker thread exiting");
+      log.info("Worker '{}' thread exiting", workerName);
     }
   }
 }

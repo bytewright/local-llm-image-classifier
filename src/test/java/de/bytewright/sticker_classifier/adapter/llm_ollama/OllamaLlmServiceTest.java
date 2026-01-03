@@ -4,14 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import de.bytewright.sticker_classifier.domain.model.ClassificationResult;
 import org.junit.jupiter.api.Test;
 
 class OllamaLlmServiceTest {
 
   @Test
-  void getSchema() {
-    OllamaLlmService ollamaLlmService = new OllamaLlmService(mock(), mock(), mock(), mock());
+  void getSchema() throws JsonProcessingException {
+    OllamaLlmService ollamaLlmService =
+        new OllamaLlmService(mock(), mock(), mock(), mock(), mock(), mock());
     Object schema = ollamaLlmService.getSchema(ClassificationResult.class);
     assertThat(schema)
         .hasToString(

@@ -68,7 +68,12 @@ public class ClassificationResultProcessor implements PromptResultConsumer {
     }
     if (appOrchestrationConfig.getClassification().isRemoveOriginalFile()) {
       try {
-        Files.delete(orgPath);
+        String orgDirName = orgPath.getParent().toFile().getName();
+        Path processingFinishedDir =
+            orgPath.getParent().getParent().resolve(orgDirName + "_processed");
+        Files.createDirectories(processingFinishedDir);
+        Path moveTarget = processingFinishedDir.resolve(orgPath.toFile().getName());
+        Files.move(orgPath, moveTarget);
       } catch (IOException e) {
         log.error("Error while removing {}", orgPath, e);
       }

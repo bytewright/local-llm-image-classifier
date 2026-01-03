@@ -1,12 +1,12 @@
 package de.bytewright.sticker_classifier.orchestration.llm;
 
+import de.bytewright.sticker_classifier.domain.AppOrchestrationConfig;
 import de.bytewright.sticker_classifier.domain.llm.LlmConnector;
+import de.bytewright.sticker_classifier.domain.llm.PromptExecutorService;
 import de.bytewright.sticker_classifier.domain.llm.PromptResult;
 import de.bytewright.sticker_classifier.domain.llm.PromptResultConsumer;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,15 +16,18 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class WorkerFactory {
-  private final ExecutorService executorService = Executors.newFixedThreadPool(1);
+  private final PromptExecutorService executorService;
   @Getter private final Set<PromptResultConsumer> resultConsumers = ConcurrentHashMap.newKeySet();
   private final PromptRequestCoordinator coordinator;
   private final LlmConnector llmConnector;
+  private final AppOrchestrationConfig appOrchestrationConfig;
 
   public void initialize() {
-    // Start the worker thread
-    var worker = new PromptRequestWorker(llmConnector, coordinator, this::notifyConsumers);
-    executorService.submit(worker::processingLoop);
+    for (int i = 0; i < appOrchestrationConfig.getPrompts().getWorkerCount(); i++) {
+      var worker =
+          new PromptRequestWorker("worker_" + i, llmConnector, coordinator, this::notifyConsumers);
+      executorService.submit(worker::processingLoop);
+    }
     log.info("Storyteller worker initialized with pool size 1");
   }
 

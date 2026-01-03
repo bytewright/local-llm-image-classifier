@@ -14,10 +14,19 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties("app.orchestration")
 public class AppOrchestrationConfig {
   private ClassificationConfig classification;
+  private PromptConfig prompts;
 
   @Getter
   @Setter(AccessLevel.PACKAGE)
   public static class ClassificationConfig {
     private boolean removeOriginalFile;
+    private boolean removeDuplicates;
+  }
+
+  @Getter
+  @Setter(AccessLevel.PACKAGE)
+  public static class PromptConfig {
+    private int workerCount;
+    private int threadCount;
   }
 }

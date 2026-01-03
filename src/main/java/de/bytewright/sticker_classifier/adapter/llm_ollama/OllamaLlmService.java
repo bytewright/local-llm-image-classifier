@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.victools.jsonschema.generator.SchemaGenerator;
 import com.github.victools.jsonschema.generator.SchemaGeneratorConfigBuilder;
 import com.github.victools.jsonschema.module.jackson.JacksonModule;
+import de.bytewright.sticker_classifier.domain.event.ImagePromptRequestFailedEvent;
 import de.bytewright.sticker_classifier.domain.llm.*;
 import de.bytewright.sticker_classifier.domain.model.ClassificationResult;
 import java.io.IOException;
@@ -25,7 +26,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.retry.TransientAiException;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -41,6 +44,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
   private final OllamaAdapterConfig ollamaAdapterConfig;
   private final ObjectMapper objectMapper = new ObjectMapper();
   private final PromptDataGenerator promptDataGenerator;
+  private final ApplicationEventPublisher eventPublisher;
   private final ClassificationResponseParser classificationResponseParser;
   private final PromptLog promptLog;
   private final OllamaApi ollamaApi;
@@ -179,7 +183,8 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     return Math.round(estimatedTokens * API_OVERHEAD_MARGIN);
   }
 
-  private String callWithImage(PromptRequestWithImage prompt, String base64Image) throws Exception {
+  private String callWithImage(PromptRequestWithImage prompt, Path imagePath, String base64Image)
+      throws Exception {
     log.debug(
         "Sending multimodal prompt to model {}:\nPrompt: {}",
         ollamaAdapterConfig.getMultiModalModel(),
@@ -231,6 +236,10 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
         log.error("Received null response or message from Ollama API for multimodal request.");
         return null;
       }
+    } catch (TransientAiException e) {
+      log.error("Error from ollama api: {}", e.getMessage());
+      eventPublisher.publishEvent(new ImagePromptRequestFailedEvent(imagePath));
+      return null;
     } catch (Exception e) {
       log.error("Error calling Ollama API for multimodal request: {}", e.getMessage(), e);
       return null;
@@ -262,7 +271,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     }
     try {
       String base64Image = encodeImageToBase64(imagePath);
-      return callWithImage(requestWithImage, base64Image);
+      return callWithImage(requestWithImage, imagePath, base64Image);
     } catch (IOException e) {
       log.error("Failed to encode image to Base64: {}", e.getMessage(), e);
       return "Error: Could not process image file. " + e.getMessage();

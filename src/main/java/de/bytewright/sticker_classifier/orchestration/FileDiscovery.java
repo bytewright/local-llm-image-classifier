@@ -1,15 +1,13 @@
 package de.bytewright.sticker_classifier.orchestration;
 
+import de.bytewright.sticker_classifier.domain.AppOrchestrationConfig;
 import de.bytewright.sticker_classifier.domain.storage.SessionStorage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +19,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class FileDiscovery {
   private final SessionStorage sessionStorage;
+  private final AppOrchestrationConfig appOrchestrationConfig;
 
   public Collection<ClassifyStickers.FileMetadata> discoverUniqueFiles(UUID sessionId)
       throws IOException {
@@ -30,7 +29,7 @@ public class FileDiscovery {
     List<Path> allFiles = getAllImageFiles(workDir);
     int totalFileCount = allFiles.size();
     log.info("Found {} PNG files", totalFileCount);
-
+    Set<DuplicateMetaInfo> duplicates = new HashSet<>();
     Map<String, ClassifyStickers.FileMetadata> filesByHash = new ConcurrentHashMap<>();
     // Calculate hashes and deduplicate
     for (Path filePath : allFiles) {
@@ -41,6 +40,7 @@ public class FileDiscovery {
         if (filesByHash.containsKey(hash)) {
           ClassifyStickers.FileMetadata existing = filesByHash.get(hash);
           log.debug("Duplicate found: {} (original: {})", filePath, existing.originalPath());
+          duplicates.add(new DuplicateMetaInfo(existing.originalPath(), filePath));
         } else {
           ClassifyStickers.FileMetadata metadata =
               new ClassifyStickers.FileMetadata(filePath, hash, size);
@@ -54,6 +54,24 @@ public class FileDiscovery {
     int uniqueFiles = filesByHash.size();
     int duplicateFiles = totalFileCount - uniqueFiles;
     log.info("Deduplication complete: {} unique files, {} duplicates", uniqueFiles, duplicateFiles);
+    if (appOrchestrationConfig.getClassification().isRemoveDuplicates()) {
+      try {
+        for (DuplicateMetaInfo duplicate : duplicates) {
+          String orgFileName = duplicate.original().toFile().getName();
+          Path orgPath = duplicate.duplicate();
+          String orgDirName = orgPath.getParent().toFile().getName();
+          Path processingFinishedDir =
+              orgPath.getParent().getParent().resolve(orgDirName + "_duplicates");
+          Files.createDirectories(processingFinishedDir);
+          Path moveTarget =
+              processingFinishedDir.resolve(
+                  "%s_%s".formatted(orgFileName, orgPath.toFile().getName()));
+          Files.move(orgPath, moveTarget);
+        }
+      } catch (IOException e) {
+        log.error("Error while removing duplicates", e);
+      }
+    }
     return filesByHash.values();
   }
 
@@ -81,4 +99,6 @@ public class FileDiscovery {
     }
     return hexString.toString();
   }
+
+  private record DuplicateMetaInfo(Path original, Path duplicate) {}
 }
