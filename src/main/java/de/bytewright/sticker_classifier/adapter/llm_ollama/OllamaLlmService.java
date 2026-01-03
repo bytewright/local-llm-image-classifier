@@ -6,6 +6,7 @@ import static com.github.victools.jsonschema.generator.SchemaVersion.DRAFT_2020_
 import static com.github.victools.jsonschema.module.jackson.JacksonOption.RESPECT_JSONPROPERTY_REQUIRED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.victools.jsonschema.generator.SchemaGenerator;
@@ -178,7 +179,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     return Math.round(estimatedTokens * API_OVERHEAD_MARGIN);
   }
 
-  private String callWithImage(PromptRequestWithImage prompt, String base64Image) {
+  private String callWithImage(PromptRequestWithImage prompt, String base64Image) throws Exception {
     log.debug(
         "Sending multimodal prompt to model {}:\nPrompt: {}",
         ollamaAdapterConfig.getMultiModalModel(),
@@ -236,7 +237,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     }
   }
 
-  Object getSchema(Class<ClassificationResult> aClass) {
+  Map<String, Object> getSchema(Class<?> aClass) throws JsonProcessingException {
     JacksonModule module = new JacksonModule(RESPECT_JSONPROPERTY_REQUIRED);
     SchemaGeneratorConfigBuilder configBuilder =
         new SchemaGeneratorConfigBuilder(DRAFT_2020_12, PLAIN_JSON)
@@ -245,7 +246,9 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
 
     SchemaGenerator generator = new SchemaGenerator(configBuilder.build());
     JsonNode jsonSchema = generator.generateSchema(aClass);
-    return jsonSchema;
+    Map<String, Object> schemaDef =
+        objectMapper.readValue(jsonSchema.toPrettyString(), new TypeReference<>() {});
+    return schemaDef;
   }
 
   private String requestWithImage(PromptRequestWithImage requestWithImage) {

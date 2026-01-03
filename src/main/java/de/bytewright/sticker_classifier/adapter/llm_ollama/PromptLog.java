@@ -94,13 +94,20 @@ public class PromptLog {
       Path logFile = getOrCreateLogFile(prompt);
       String timestamp = LocalDateTime.now().format(DETAILED_TIMESTAMP_FORMATTER);
 
-        String logEntry = RESPONSE_SEPARATOR + "\n" +
-                          "Response Timestamp: " + timestamp + "\n" +
-                          "Content: " + content + "\n" +
-                          "\n" + "=".repeat(80) + "\n\n";
+      String logEntry =
+          RESPONSE_SEPARATOR
+              + "\n"
+              + "Response Timestamp: "
+              + timestamp
+              + "\n"
+              + "Content: "
+              + content
+              + "\n"
+              + "\n"
+              + "=".repeat(80)
+              + "\n\n";
 
-      Files.writeString(
-          logFile, logEntry, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+      Files.writeString(logFile, logEntry, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 
       log.debug(
           "Logged response for {} with ID {}", prompt.promptType(), prompt.requestParameter());

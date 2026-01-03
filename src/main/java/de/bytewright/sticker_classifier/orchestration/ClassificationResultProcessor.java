@@ -49,9 +49,10 @@ public class ClassificationResultProcessor implements PromptResultConsumer {
     Path resultRootDir = sessionStorage.getResultRootDir(request.requestParameter());
     String name = request.imagePath().getFileName().toFile().getName();
     String targetFileName =
-        "%s_%s_%s"
+        "%s_%s_%s_%s"
             .formatted(
                 languageCodeCleanerService.cleanLanguageResponse(result.getTextLanguageGuess()),
+                result.getEmoji(),
                 languageCodeCleanerService.sanitizeForFilename(result.getKeyword()),
                 name);
     Set<String> categoryNamesFromTags = getCategoryNamesFromTags(request, result);
@@ -62,7 +63,14 @@ public class ClassificationResultProcessor implements PromptResultConsumer {
         log.info("Moving '{}' to: {}", name, outPath);
         copyFile(orgPath, outPath);
       } catch (IOException e) {
-        log.error("Error while moving {}", orgPath, e);
+        log.error("Error while copying {}", orgPath, e);
+      }
+    }
+    if (appOrchestrationConfig.getClassification().isRemoveOriginalFile()) {
+      try {
+        Files.delete(orgPath);
+      } catch (IOException e) {
+        log.error("Error while removing {}", orgPath, e);
       }
     }
     return true;
@@ -74,9 +82,6 @@ public class ClassificationResultProcessor implements PromptResultConsumer {
       Files.copy(orgPath, outPath);
     } else {
       log.info("Skipping copy of file because it already exists! {}", outPath);
-    }
-    if (appOrchestrationConfig.getClassification().isRemoveOriginalFile()) {
-      Files.delete(orgPath);
     }
   }
 
