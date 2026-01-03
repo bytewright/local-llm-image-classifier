@@ -15,42 +15,38 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class OllamaModelWarmer {
   private final OllamaApi ollamaApi;
+  private final OllamaAdapterConfig ollamaAdapterConfig;
 
   @Async
   @EventListener
   public void onApplicationEvent(ContextRefreshedEvent event) {
     log.info("Initializing ollama api");
-    List<String> models = List.of(OllamaContextConfig.DEFAULT_MULTIMODAL_MODEL);
+    List<String> models = List.of(ollamaAdapterConfig.getMultiModalModel());
     for (String model : models) {
       sendHello(ollamaApi, model);
     }
   }
 
   private void sendHello(OllamaApi ollamaApi, String model) {
-    try {
-      log.info("Attempting to warm up model: {}", model);
-      var warmupRequest =
-          OllamaApi.ChatRequest.builder(model).stream(false)
-              .messages(
-                  List.of(
-                      OllamaApi.Message.builder(OllamaApi.Message.Role.USER)
-                          .content("Hello! Are you ready?")
-                          .build()))
-              .options(
-                  OllamaChatOptions.builder().numPredict(-1).build()) // -1 to generate until EOS
-              .build();
-      OllamaApi.ChatResponse response = ollamaApi.chat(warmupRequest);
-      if (response != null && response.message() != null && response.message().content() != null) {
-        String content = response.message().content();
-        log.info(
-            "Model ({}) warmed up. Response: {}",
-            model,
-            content.substring(0, Math.min(50, content.length())));
-      } else {
-        log.warn("Model ({}) warmup might have failed or returned no content.", model);
-      }
-    } catch (Exception e) {
-      log.error("Failed to warm up model ({}): {}", model, e.getMessage());
+    log.info("Attempting to warm up model: {}", model);
+    var warmupRequest =
+        OllamaApi.ChatRequest.builder(model).stream(false)
+            .messages(
+                List.of(
+                    OllamaApi.Message.builder(OllamaApi.Message.Role.USER)
+                        .content("Hello! Are you ready?")
+                        .build()))
+            .options(OllamaChatOptions.builder().numPredict(-1).build()) // -1 to generate until EOS
+            .build();
+    OllamaApi.ChatResponse response = ollamaApi.chat(warmupRequest);
+    if (response != null && response.message() != null && response.message().content() != null) {
+      String content = response.message().content();
+      log.info(
+          "Model ({}) warmed up. Response: {}",
+          model,
+          content.substring(0, Math.min(50, content.length())));
+    } else {
+      log.warn("Model ({}) warmup might have failed or returned no content.", model);
     }
   }
 }

@@ -1,3 +1,15 @@
 spring:
   application:
     name: sticker-classifier
+app:
+  orchestration:
+    classification:
+      removeOriginalFile: true
+  adapter:
+    ollama:
+      multiModalModel: "qwen3-vl:4b"
+      textModel: "gemma3:12b"
+      baseUrl: "http://localhost:11434"
+      timeoutSeconds: 240
+      minContextSize: 8192
+      maxContextSize: 65536

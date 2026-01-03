@@ -4,8 +4,6 @@ import static com.github.victools.jsonschema.generator.Option.EXTRA_OPEN_API_FOR
 import static com.github.victools.jsonschema.generator.OptionPreset.PLAIN_JSON;
 import static com.github.victools.jsonschema.generator.SchemaVersion.DRAFT_2020_12;
 import static com.github.victools.jsonschema.module.jackson.JacksonOption.RESPECT_JSONPROPERTY_REQUIRED;
-import static de.bytewright.sticker_classifier.adapter.llm_ollama.OllamaContextConfig.DEFAULT_MULTIMODAL_MODEL;
-import static de.bytewright.sticker_classifier.adapter.llm_ollama.OllamaContextConfig.DEFAULT_TEXT_MODEL;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -29,6 +27,7 @@ import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Slf4j
 @Service
@@ -36,10 +35,9 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class OllamaLlmService implements LlmConnector, InitializingBean {
 
-  private static final int MIN_CONTEXT_SIZE = 8_192;
-  private static final int MAX_CONTEXT_SIZE = 65_536;
   private static final double TOKEN_TO_CHAR_RATIO = 4.0;
   private static final double API_OVERHEAD_MARGIN = 1.2; // 20% buffer
+  private final OllamaAdapterConfig ollamaAdapterConfig;
   private final ObjectMapper objectMapper = new ObjectMapper();
   private final PromptDataGenerator promptDataGenerator;
   private final ClassificationResponseParser classificationResponseParser;
@@ -106,20 +104,25 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
   String call(PromptRequest prompt, String context) {
     log.debug(
         "Sending text-only prompt to model {}:\nPrompt: {}\nContext: {}",
-        DEFAULT_TEXT_MODEL,
+        ollamaAdapterConfig.getTextModel(),
         prompt.prompt(),
         context);
     promptLog.logPrompt(prompt, context);
 
     long estimatedTokens = estimateTokenCount(prompt.prompt(), context);
-    int clampedContextSize = Math.clamp(estimatedTokens, MIN_CONTEXT_SIZE, MAX_CONTEXT_SIZE);
+    int clampedContextSize =
+        Math.clamp(
+            estimatedTokens,
+            ollamaAdapterConfig.getMinContextSize(),
+            ollamaAdapterConfig.getMaxContextSize());
     log.info(
         "Estimated tokens: {}, Clamped context size (numCtx): {}",
         estimatedTokens,
         clampedContextSize);
 
     var requestBuilder =
-        OllamaApi.ChatRequest.builder(DEFAULT_TEXT_MODEL).stream(false)
+        OllamaApi.ChatRequest.builder(ollamaAdapterConfig.getTextModel()).stream(false)
+            .thinkLow()
             .messages(
                 List.of(
                     OllamaApi.Message.builder(OllamaApi.Message.Role.SYSTEM)
@@ -133,8 +136,8 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
                         .build()))
             .options(
                 OllamaChatOptions.builder()
-                    .temperature(1.5)
-                    .topP(0.95)
+                    //   .temperature(1.5)
+                    //   .topP(0.95)
                     .numCtx(clampedContextSize)
                     .build());
     if (prompt.responseJsonFormat().isPresent()) {
@@ -170,14 +173,16 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
    * @return An estimated token count with a buffer for API overhead.
    */
   private long estimateTokenCount(String prompt, String context) {
-    long totalChars = prompt.length() + context.length();
+    long totalChars = prompt.length() + (StringUtils.hasLength(context) ? context.length() : 0);
     double estimatedTokens = totalChars / TOKEN_TO_CHAR_RATIO;
     return Math.round(estimatedTokens * API_OVERHEAD_MARGIN);
   }
 
   private String callWithImage(PromptRequestWithImage prompt, String base64Image) {
     log.debug(
-        "Sending multimodal prompt to model {}:\nPrompt: {}", DEFAULT_MULTIMODAL_MODEL, prompt);
+        "Sending multimodal prompt to model {}:\nPrompt: {}",
+        ollamaAdapterConfig.getMultiModalModel(),
+        prompt);
 
     promptLog.logPrompt(prompt, null);
     var userMessage =
@@ -189,22 +194,38 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
     // Define JSON schema for structured response
     var responseSchema = getSchema(ClassificationResult.class);
 
+    double estimatedTokens =
+        estimateTokenCount(prompt.prompt(), "")
+            + (base64Image.length() / TOKEN_TO_CHAR_RATIO) * 1.3;
+    int clampedContextSize =
+        Math.clamp(
+            Math.round(estimatedTokens),
+            ollamaAdapterConfig.getMinContextSize(),
+            ollamaAdapterConfig.getMaxContextSize());
     var request =
-        OllamaApi.ChatRequest.builder(DEFAULT_MULTIMODAL_MODEL).stream(false)
+        OllamaApi.ChatRequest.builder(ollamaAdapterConfig.getMultiModalModel()).stream(false)
+            // .thinkLow()
             .messages(
                 List.of(
                     OllamaApi.Message.builder(OllamaApi.Message.Role.SYSTEM)
                         .content(SystemPrompts.IMAGE_CLASSIFY_ANALYZE.getPrompt())
                         .build(),
                     userMessage))
-            .options(OllamaChatOptions.builder().temperature(0.3).topP(0.9).numCtx(8_192).build())
+            .options(
+                OllamaChatOptions.builder()
+                    .temperature(0.3)
+                    .topP(0.9)
+                    .numCtx(clampedContextSize)
+                    .build())
             .format(responseSchema) // Enforce JSON structure
             .build();
 
     try {
       OllamaApi.ChatResponse response = ollamaApi.chat(request);
       if (response != null && response.message() != null) {
-        return response.message().content();
+        String content = response.message().content();
+        promptLog.logResponse(prompt, content);
+        return content;
       } else {
         log.error("Received null response or message from Ollama API for multimodal request.");
         return null;

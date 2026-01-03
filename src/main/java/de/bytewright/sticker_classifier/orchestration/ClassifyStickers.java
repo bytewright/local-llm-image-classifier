@@ -73,7 +73,7 @@ public class ClassifyStickers {
   private String buildClassificationPrompt() {
     StringBuilder prompt = new StringBuilder();
     prompt.append(
-        "Analyze this chat sticker image and determine a set of 'Tags' for it from the following list:\n\n");
+        "Analyze this chat sticker image and determine a matching text expression, emoji and a set of 'Tags' for it from the following list:\n\n");
 
     for (ClassificationCategory category : currentConfig.classifications()) {
       prompt.append("Tag: ").append(category.name()).append("\n");

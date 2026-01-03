@@ -1,6 +1,8 @@
 package de.bytewright.sticker_classifier.orchestration;
 
+import de.bytewright.sticker_classifier.domain.AppOrchestrationConfig;
 import de.bytewright.sticker_classifier.domain.llm.*;
+import de.bytewright.sticker_classifier.domain.llm.utils.LanguageCodeCleanerService;
 import de.bytewright.sticker_classifier.domain.model.ClassificationCategory;
 import de.bytewright.sticker_classifier.domain.model.ClassificationResult;
 import de.bytewright.sticker_classifier.domain.model.CompoundClassificationCategory;
@@ -18,6 +20,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ClassificationResultProcessor implements PromptResultConsumer {
   private final SessionStorage sessionStorage;
+  private final LanguageCodeCleanerService languageCodeCleanerService;
+  private final AppOrchestrationConfig appOrchestrationConfig;
 
   @Override
   public boolean processPromtResult(PromptType promtType, PromptResult promptResult) {
@@ -44,14 +48,11 @@ public class ClassificationResultProcessor implements PromptResultConsumer {
     log.info("Got classificationResult for path: {}\nClassified as: {}", orgPath, result);
     Path resultRootDir = sessionStorage.getResultRootDir(request.requestParameter());
     String name = request.imagePath().getFileName().toFile().getName();
-    if (result.isHasText()) {
-      name = result.getTextLanguageGuess() + "_" + name;
-    }
     String targetFileName =
         "%s_%s_%s"
             .formatted(
-                result.isHasText() ? result.getTextLanguageGuess().toLowerCase() : "int",
-                result.getKeyword(),
+                languageCodeCleanerService.cleanLanguageResponse(result.getTextLanguageGuess()),
+                languageCodeCleanerService.sanitizeForFilename(result.getKeyword()),
                 name);
     Set<String> categoryNamesFromTags = getCategoryNamesFromTags(request, result);
     for (String categoryNameFromTag : categoryNamesFromTags) {
@@ -69,7 +70,14 @@ public class ClassificationResultProcessor implements PromptResultConsumer {
 
   private void copyFile(Path orgPath, Path outPath) throws IOException {
     Files.createDirectories(outPath.getParent());
-    Files.copy(orgPath, outPath);
+    if (!Files.isRegularFile(outPath)) {
+      Files.copy(orgPath, outPath);
+    } else {
+      log.info("Skipping copy of file because it already exists! {}", outPath);
+    }
+    if (appOrchestrationConfig.getClassification().isRemoveOriginalFile()) {
+      Files.delete(orgPath);
+    }
   }
 
   private Set<String> getCategoryNamesFromTags(
