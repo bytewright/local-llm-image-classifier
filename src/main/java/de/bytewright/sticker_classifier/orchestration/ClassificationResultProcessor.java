@@ -61,7 +61,7 @@ public class ClassificationResultProcessor implements PromptResultConsumer {
       Path dir = resultRootDir.resolve(categoryNameFromTag);
       Path outPath = dir.resolve(targetFileName);
       try {
-        log.info("Moving '{}' to: {}", name, outPath);
+        log.debug("Moving '{}' to: {}", name, outPath);
         copyFile(orgPath, outPath);
       } catch (IOException e) {
         log.error("Error while copying {}", orgPath, e);

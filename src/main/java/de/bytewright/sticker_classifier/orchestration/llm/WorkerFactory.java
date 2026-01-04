@@ -5,8 +5,8 @@ import de.bytewright.sticker_classifier.domain.llm.LlmConnector;
 import de.bytewright.sticker_classifier.domain.llm.PromptExecutorService;
 import de.bytewright.sticker_classifier.domain.llm.PromptResult;
 import de.bytewright.sticker_classifier.domain.llm.PromptResultConsumer;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class WorkerFactory {
   private final PromptExecutorService executorService;
-  @Getter private final Set<PromptResultConsumer> resultConsumers = ConcurrentHashMap.newKeySet();
+  @Getter private final List<PromptResultConsumer> resultConsumers = new ArrayList<>();
   private final PromptRequestCoordinator coordinator;
   private final LlmConnector llmConnector;
   private final AppOrchestrationConfig appOrchestrationConfig;

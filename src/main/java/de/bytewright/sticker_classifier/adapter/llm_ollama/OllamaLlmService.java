@@ -16,8 +16,10 @@ import de.bytewright.sticker_classifier.domain.event.ImagePromptRequestFailedEve
 import de.bytewright.sticker_classifier.domain.llm.*;
 import de.bytewright.sticker_classifier.domain.model.ClassificationResult;
 import java.io.IOException;
+import java.net.http.HttpTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.ResourceAccessException;
 
 @Slf4j
 @Service
@@ -235,7 +238,15 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
         return content;
       } else {
         log.error("Received null response or message from Ollama API for multimodal request.");
-        return null;
+      }
+    } catch (ResourceAccessException e) {
+      if (e.getCause() instanceof HttpTimeoutException te) {
+        log.error(
+            "Request timed out after {}: {}",
+            Duration.ofSeconds(ollamaAdapterConfig.getTimeoutSeconds()),
+            te.getMessage());
+      } else {
+        log.error("Error calling Ollama API for multimodal request: {}", e.getMessage(), e);
       }
     } catch (TransientAiException e) {
       log.error("Error from ollama api: {}", e.getMessage());
@@ -243,8 +254,8 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
       throw new NoRetryException();
     } catch (Exception e) {
       log.error("Error calling Ollama API for multimodal request: {}", e.getMessage(), e);
-      return null;
     }
+    return null;
   }
 
   Map<String, Object> getSchema(Class<?> aClass) throws JsonProcessingException {
@@ -263,7 +274,7 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
 
   private Optional<String> requestWithImage(PromptRequestWithImage requestWithImage) {
     Path imagePath = requestWithImage.imagePath();
-    log.info(
+    log.debug(
         "Attempting to get character info from image: {}",
         imagePath != null ? imagePath.toAbsolutePath() : "null");
     if (imagePath == null) {

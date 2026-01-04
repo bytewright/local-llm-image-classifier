@@ -1,6 +1,8 @@
 package de.bytewright.sticker_classifier.orchestration.llm;
 
 import de.bytewright.sticker_classifier.domain.llm.PromptResultConsumer;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +21,11 @@ public class PromptRequestAppContextListener {
   @EventListener
   public void onApplicationEvent(ContextRefreshedEvent event) {
     log.info("Initializing storyteller worker on application startup");
-    workerFactory.getResultConsumers().addAll(resultConsumers);
+    List<PromptResultConsumer> sortedConsumers =
+        resultConsumers.stream()
+            .sorted(Comparator.comparing(PromptResultConsumer::consumerPriority))
+            .toList();
+    workerFactory.getResultConsumers().addAll(sortedConsumers);
     workerFactory.initialize();
   }
 

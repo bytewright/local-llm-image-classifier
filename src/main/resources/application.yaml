@@ -7,8 +7,8 @@ app:
       removeOriginalFile: true
       removeDuplicates: true
     prompts:
-      workerCount: 4
-      threadCount: 4
+      workerCount: 7
+      threadCount: 7
   adapter:
     ollama:
       multiModalModel: "qwen3-vl:4b"
