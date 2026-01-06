@@ -1,6 +1,7 @@
 package de.bytewright.sticker_classifier.orchestration;
 
 import de.bytewright.sticker_classifier.domain.AppOrchestrationConfig;
+import de.bytewright.sticker_classifier.domain.img.ImageValidationService;
 import de.bytewright.sticker_classifier.domain.storage.SessionStorage;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,10 +20,10 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class FileDiscovery {
   private final SessionStorage sessionStorage;
+  private final ImageValidationService imageService;
   private final AppOrchestrationConfig appOrchestrationConfig;
 
-  public Collection<ClassifyStickers.FileMetadata> discoverUniqueFiles(UUID sessionId)
-      throws IOException {
+  public Collection<Path> discoverUniqueFiles(UUID sessionId) throws IOException {
     Path workDir = sessionStorage.getWorkDir(sessionId);
     log.info("Phase 1: Discovering files in {}", workDir);
 
@@ -72,7 +73,12 @@ public class FileDiscovery {
         log.error("Error while removing duplicates", e);
       }
     }
-    return filesByHash.values();
+    Collection<Path> paths =
+        imageService.validateAndFixImages(
+            filesByHash.values().stream()
+                .map(ClassifyStickers.FileMetadata::originalPath)
+                .toList());
+    return paths;
   }
 
   private List<Path> getAllImageFiles(Path path) throws IOException {

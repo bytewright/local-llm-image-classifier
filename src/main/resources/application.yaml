@@ -7,13 +7,13 @@ app:
       removeOriginalFile: true
       removeDuplicates: true
     prompts:
-      workerCount: 7
-      threadCount: 7
+      workerCount: 2
+      threadCount: 2
   adapter:
     ollama:
       multiModalModel: "qwen3-vl:4b"
       textModel: "gemma3:12b"
       baseUrl: "http://localhost:11434"
-      timeoutSeconds: 240
-      minContextSize: 8192
+      timeoutSeconds: 60
+      minContextSize: 4000
       maxContextSize: 65536

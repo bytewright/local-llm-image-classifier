@@ -21,6 +21,7 @@ public class PromptErrorHandler {
       Path errorDir = orgPath.getParent().getParent().resolve(orgDirName + "_error");
       Files.createDirectories(errorDir);
       Path moveTarget = errorDir.resolve(orgPath.toFile().getName());
+      log.warn("Moving '{}' to: {}", orgPath.toFile().getName(), moveTarget);
       Files.move(orgPath, moveTarget);
     } catch (IOException e) {
       log.error("Error while removing {}", orgPath, e);

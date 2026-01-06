@@ -50,4 +50,8 @@ public class PromptRequestCoordinator /*implements HealthIndicator*/ {
     }
     return Optional.empty();
   }
+
+  public int getQueueSize() {
+    return requestQueue.size();
+  }
 }

@@ -43,7 +43,7 @@ public class ClassifyStickers {
     sessionStorage.updateState(sessionId, ProcessingState.DISCOVERING);
     try {
       // Phase 1: Discovery and Deduplication
-      Collection<FileMetadata> fileMetadata = fileDiscovery.discoverUniqueFiles(sessionId);
+      Collection<Path> fileMetadata = fileDiscovery.discoverUniqueFiles(sessionId);
       // Phase 3: Classification
       sessionStorage.updateState(sessionId, ProcessingState.CLASSIFYING);
       classifyFiles(sessionId, fileMetadata);
@@ -53,14 +53,14 @@ public class ClassifyStickers {
     }
   }
 
-  private void classifyFiles(UUID sessionId, Collection<FileMetadata> fileMetadata) {
-    log.info("Phase 2: Classifying {} unique files", fileMetadata.size());
+  private void classifyFiles(UUID sessionId, Collection<Path> filePaths) {
+    log.info("Phase 2: Classifying {} unique files", filePaths.size());
 
     String classificationPrompt = buildClassificationPrompt();
-    for (FileMetadata file : fileMetadata) {
+    for (Path filePath : filePaths) {
       PromptRequestWithImage request =
           PromptRequestWithImage.builder()
-              .imagePath(file.originalPath())
+              .imagePath(filePath)
               .prompt(classificationPrompt)
               .promptType(PromptType.STICKER_CLASSIFICATION)
               .requestParameter(sessionId)
