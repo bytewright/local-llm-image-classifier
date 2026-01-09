@@ -20,8 +20,11 @@ public class PromptRequestCoordinator /*implements HealthIndicator*/ {
   }
 
   void reschedule(PromptRequest promptRequest) {
-    log.warn("Rescheduling prompt request after exec failed: {}", promptRequest.promptType());
     if (promptRequest instanceof PromptRetry(int counter, PromptRequest delegate)) {
+      log.warn(
+          "{}. rescheduling attempt for prompt request after exec failed: {}",
+          counter,
+          delegate.promptType());
       if (counter < 3) {
         requestQueue.add(new PromptRetry(counter + 1, delegate));
       } else {
@@ -29,8 +32,10 @@ public class PromptRequestCoordinator /*implements HealthIndicator*/ {
             "Failed to get usable result from promptRequest in %d tries! %s"
                 .formatted(counter, delegate));
       }
+    } else {
+      log.warn("Rescheduling prompt request after exec failed: {}", promptRequest.promptType());
+      requestQueue.add(new PromptRetry(1, promptRequest));
     }
-    requestQueue.add(new PromptRetry(1, promptRequest));
   }
 
   /**

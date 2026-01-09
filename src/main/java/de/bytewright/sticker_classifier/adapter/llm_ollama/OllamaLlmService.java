@@ -59,27 +59,33 @@ public class OllamaLlmService implements LlmConnector, InitializingBean {
         request.promptType(),
         request.requestParameter());
     try {
-      String result;
-      if (request instanceof PromptRequestWithImage requestWithImage) {
-        return requestWithImage(requestWithImage)
-            .flatMap(json -> classificationResponseParser.parseResponse(requestWithImage, json))
-            .map(
-                value ->
-                    ClassificationPromptResult.builder()
-                        .promptRequestWithImage(requestWithImage)
-                        .classificationResult(value)
-                        .build());
-      } else {
-        String context = getContext(request);
-        result = call(request, context);
+      switch (request) {
+        case PromptRequestUnstructured promptRequestUnstructured -> {
+          String context = getContext(promptRequestUnstructured);
+          String call = call(promptRequestUnstructured, context);
+          var promptResult =
+              new StringPromptResult(
+                  request, request.promptType(), request.requestParameter(), call);
+          log.info(
+              "Successfully processed request of type {} for id {}",
+              request.promptType(),
+              request.requestParameter());
+          return Optional.of(promptResult);
+        }
+        case PromptRequestWithImage requestWithImage -> {
+          return requestWithImage(requestWithImage)
+              .flatMap(json -> classificationResponseParser.parseResponse(requestWithImage, json))
+              .map(
+                  value ->
+                      ClassificationPromptResult.builder()
+                          .promptRequestWithImage(requestWithImage)
+                          .classificationResult(value)
+                          .build());
+        }
+        case PromptRetry promptRetry -> {
+          return processRequest(promptRetry.delegate());
+        }
       }
-      var promptResult =
-          new StringPromptResult(request, request.promptType(), request.requestParameter(), result);
-      log.info(
-          "Successfully processed request of type {} for id {}",
-          request.promptType(),
-          request.requestParameter());
-      return Optional.of(promptResult);
     } catch (NoRetryException e) {
       return Optional.of(new ErrorPromptResult(request));
     } catch (Exception e) {
