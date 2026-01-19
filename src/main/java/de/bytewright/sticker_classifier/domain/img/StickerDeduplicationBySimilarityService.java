@@ -10,20 +10,22 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.imageio.ImageIO;
+import lombok.Builder;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
 public class StickerDeduplicationBySimilarityService {
-  private static final double EXACT_COPY_THRESHOLD = 0.01;
-  private static final double SIMILARITY_THRESHOLD = 0.16; // 0.1 = 90% similar
-  private static final int HASH_PRECISION = 64;
   private static final Pattern GROUP_PREFIX_PRESENT = Pattern.compile("^[0-9]{5}_.*");
+  private static final Pattern STICKER_ID_FINDER =
+      Pattern.compile("^[0-9]{5}_(.*)_([0-9]{5,8})@2x.png$");
 
   /**
    * Processes a directory: finds PNG files, clusters by visual similarity, and renames them with
@@ -32,7 +34,7 @@ public class StickerDeduplicationBySimilarityService {
    * @param path Path to directory or single file
    * @return Map of group IDs to list of renamed files
    */
-  public Map<String, List<Path>> processAndRenameFiles(Path path, boolean dryRun)
+  public Map<String, List<Path>> processAndRenameFiles(Path path, Config config)
       throws IOException {
     if (!Files.exists(path)) {
       throw new IllegalArgumentException("Path does not exist: " + path.toAbsolutePath());
@@ -46,13 +48,13 @@ public class StickerDeduplicationBySimilarityService {
       return Collections.emptyMap();
     }
 
-    List<ClusteredFiles> clusters = clusterByContent(pngFiles);
+    List<ClusteredFiles> clusters = clusterByContent(pngFiles, config);
     log.info("Created {} clusters from {} files", clusters.size(), pngFiles.size());
     Comparator<ClusteredFiles> comparator =
         Comparator.comparing(clusteredFiles -> clusteredFiles.filePaths().size());
     clusters =
-        autoDeleteFullMatches(clusters, dryRun).stream().sorted(comparator.reversed()).toList();
-    Map<String, List<Path>> renamedFiles = renameFilesWithGroupId(clusters, dryRun);
+        autoDeleteFullMatches(clusters, config).stream().sorted(comparator.reversed()).toList();
+    Map<String, List<Path>> renamedFiles = renameFilesWithGroupId(clusters, config);
     log.info(
         "Successfully renamed {} files across {} groups",
         renamedFiles.values().stream().mapToInt(List::size).sum(),
@@ -61,11 +63,11 @@ public class StickerDeduplicationBySimilarityService {
     return renamedFiles;
   }
 
-  private List<ClusteredFiles> autoDeleteFullMatches(List<ClusteredFiles> clusters, boolean dryRun)
+  private List<ClusteredFiles> autoDeleteFullMatches(List<ClusteredFiles> clusters, Config dryRun)
       throws IOException {
     List<ClusteredFiles> resultList = new ArrayList<>(clusters.size());
     for (ClusteredFiles cluster : clusters) {
-      if (cluster.avgScore() <= EXACT_COPY_THRESHOLD && cluster.filePaths().size() > 1) {
+      if (cluster.avgScore() <= dryRun.getExactCopyThreshold() && cluster.filePaths().size() > 1) {
         log.info(
             "Detected full match (score:{}), removing {} images...",
             cluster.avgScore(),
@@ -83,7 +85,7 @@ public class StickerDeduplicationBySimilarityService {
                         }))
                 .orElseThrow();
 
-        if (!dryRun) {
+        if (!dryRun.isDryRun()) {
           for (Path filePath : cluster.filePaths()) {
             if (toKeep.equals(filePath)) continue;
             Files.delete(filePath);
@@ -129,8 +131,9 @@ public class StickerDeduplicationBySimilarityService {
   }
 
   /** Clusters files by perceptual hash similarity */
-  private List<ClusteredFiles> clusterByContent(List<Path> files) throws IOException {
-    PerceptiveHash pHash = new PerceptiveHash(HASH_PRECISION);
+  private List<ClusteredFiles> clusterByContent(List<Path> files, Config config)
+      throws IOException {
+    PerceptiveHash pHash = new PerceptiveHash(config.getHashPrecision());
     pHash.setOpaqueHandling(Color.BLACK, 253);
     Map<Path, Hash> fileHashes = new HashMap<>();
 
@@ -160,7 +163,7 @@ public class StickerDeduplicationBySimilarityService {
         }
         double similarity = entry1.getValue().normalizedHammingDistance(entry2.getValue());
         computedPairs.add(pairs);
-        if (similarity <= SIMILARITY_THRESHOLD) {
+        if (similarity <= config.getSimilarityThreshold()) {
           log.info(
               "{} - {} - {} vs {}",
               "%.4f".formatted(similarity),
@@ -274,7 +277,7 @@ public class StickerDeduplicationBySimilarityService {
 
   /** Renames files with 5-digit zero-padded group ID prefix */
   private Map<String, List<Path>> renameFilesWithGroupId(
-      List<ClusteredFiles> clusters, boolean dryRun) {
+      List<ClusteredFiles> clusters, Config config) {
     Map<String, List<Path>> result = new HashMap<>();
     for (int i = 0; i < clusters.size(); i++) {
       ClusteredFiles clusteredFiles = clusters.get(i);
@@ -292,7 +295,13 @@ public class StickerDeduplicationBySimilarityService {
         try {
           String originalFileName = originalPath.getFileName().toString();
           String newFileName = groupIdStr + "_" + originalFileName;
-          if (GROUP_PREFIX_PRESENT.matcher(originalFileName).matches()) {
+          Matcher stickerIdMatcher = STICKER_ID_FINDER.matcher(originalFileName);
+          if (stickerIdMatcher.matches()) {
+            String stickerName = stickerIdMatcher.group(1);
+            String stickerId = stickerIdMatcher.group(2);
+            newFileName =
+                "%s_%08d_%s.png".formatted(groupIdStr, Integer.parseInt(stickerId), stickerName);
+          } else if (GROUP_PREFIX_PRESENT.matcher(originalFileName).matches()) {
             newFileName = "%s_%s".formatted(groupIdStr, originalFileName.substring(6));
           }
           Path newPath = originalPath.getParent().resolve(newFileName.replace("__", "_"));
@@ -310,7 +319,7 @@ public class StickerDeduplicationBySimilarityService {
             renamedPaths.add(originalPath);
             continue;
           }
-          if (!dryRun) {
+          if (!config.isDryRun()) {
             Files.move(originalPath, newPath, StandardCopyOption.ATOMIC_MOVE);
           }
           log.debug("Renamed: {} -> {}", originalPath.getFileName(), newFileName);
@@ -340,5 +349,14 @@ public class StickerDeduplicationBySimilarityService {
       return Objects.equals(p1, that.p1) && Objects.equals(p2, that.p2)
           || Objects.equals(p1, that.p2) && Objects.equals(p2, that.p1);
     }
+  }
+
+  @Data
+  @Builder
+  public static class Config {
+    @Builder.Default private final boolean dryRun = true;
+    @Builder.Default private final double exactCopyThreshold = 0.01;
+    @Builder.Default private final double similarityThreshold = 0.16; // 0.1 = 90% similar
+    @Builder.Default private final int hashPrecision = 64;
   }
 }
